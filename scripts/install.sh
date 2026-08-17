@@ -43,8 +43,12 @@ NC='\033[0m' # No Color
 BOLD='\033[1m'
 
 # Configuration
-REPO_URL_SSH="git@github.com:NousResearch/hermes-agent.git"
-REPO_URL_HTTPS="https://github.com/NousResearch/hermes-agent.git"
+# Office Agent fork. The desktop app fetches THIS script from qd-ai/hermes by
+# raw URL and pins the checkout to a specific commit, so the clone below must
+# come from the same repo -- otherwise the script and the code it installs
+# would be sourced from two different places.
+REPO_URL_SSH="git@github.com:qd-ai/hermes.git"
+REPO_URL_HTTPS="https://github.com/qd-ai/hermes.git"
 HERMES_HOME="${HERMES_HOME:-$HOME/.hermes}"
 # INSTALL_DIR is resolved AFTER arg parsing and OS detection so we can pick an
 # FHS-style layout for root installs.  Track whether the user gave us an
