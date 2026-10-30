@@ -35,6 +35,20 @@ export default [
     }
   },
   {
+    // Playwright specs, not app code. The pre-commit hook lints every staged
+    // file under apps/desktop (the lint script only covers src/ and electron/),
+    // so the fixture idioms Playwright requires need room here: the empty
+    // `({}, testInfo)` destructure (the first argument must be an object
+    // pattern), the fixture's `use()` callback (not a React hook), and inline
+    // `import()` types for page.evaluate payloads.
+    files: ['e2e/**/*.{ts,tsx}'],
+    rules: {
+      '@typescript-eslint/consistent-type-imports': 'off',
+      'no-empty-pattern': 'off',
+      'react-hooks/rules-of-hooks': 'off'
+    }
+  },
+  {
     files: ['**/*.test.tsx'],
     rules: {
       'no-restricted-globals': ['warn', 'document']
