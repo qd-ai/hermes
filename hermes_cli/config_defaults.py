@@ -2698,11 +2698,11 @@ DEFAULT_CONFIG = {
         # 14-20% of consecutive calls in concurrent tool loops (measured 2026-09-06;
         # NousResearch/api#227), so chat is the default until that is fixed.
         "anthropic_wire": "chat",
-        # Nous free tier: with no other provider configured, Hermes sets up a free Nous identity on
-        # first use (inference on nous/welcome + connectors) and offers `/login` (terminal:
-        # `hermes auth upgrade`) to sign in. false turns the free tier off entirely: nothing is set
-        # up and nothing is used.
-        "guest": True,
+        # Nous free tier: when true and no other provider is configured, Hermes sets up a free Nous
+        # identity on first use (inference on nous/welcome + connectors) and offers `/login`
+        # (terminal: `hermes auth upgrade`) to sign in. Office Agent ships it off: inference runs
+        # on the user's own provider key, so nothing is set up with or sent to NousResearch.
+        "guest": False,
     },
     # Google Vertex AI (Gemini). Auth is OAuth2 from a service-account JSON or ADC, NOT an API key;
     # the credential path lives in .env (VERTEX_CREDENTIALS_PATH / GOOGLE_APPLICATION_CREDENTIALS).

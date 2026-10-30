@@ -191,14 +191,15 @@ needs no sign-in.
 It does not change your model provider: outside builds that ship
 the Nous free tier it is used for connectors and managed tools only. Until it exists, `tool_search` sends nothing to the
 gateway and its result says that hosted connectors are not set up yet and
-that `manage_connections` sets them up. To opt out, set:
+that `manage_connections` sets them up. Office Agent ships this off, so no
+identity is ever created; to opt in, set:
 
 ```yaml
 nous:
-  guest: false
+  guest: true
 ```
 
-With that setting, or when the gateway does not serve connectors for a
+Without that setting, or when the gateway does not serve connectors for a
 signed-in account, everything above is invisible: local search behaves exactly
 as described in the rest of this page, with no errors shown to the model.
 

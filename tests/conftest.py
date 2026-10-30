@@ -449,6 +449,22 @@ def _reset_foreground_exit_fence():
 
 
 @pytest.fixture(autouse=True)
+def _upstream_nous_guest_default(request, monkeypatch):
+    """Run every test against upstream's ``nous.guest: true`` default.
+
+    Office Agent ships the Nous free tier off (``hermes_cli/config_defaults.py``), but the guest,
+    welcome-trial and hosted-connector machinery is still in the tree as an opt-in, and upstream's
+    suites for it are written against the default being on. Tests that check what Office Agent
+    actually ships opt out with ``@pytest.mark.shipped_nous_guest``.
+    """
+    if request.node.get_closest_marker("shipped_nous_guest"):
+        return
+    from hermes_cli.config_defaults import DEFAULT_CONFIG
+
+    monkeypatch.setitem(DEFAULT_CONFIG["nous"], "guest", True)
+
+
+@pytest.fixture(autouse=True)
 def _neutralize_kanban_memory_guard(request, monkeypatch):
     """Pin the kanban dispatcher's memory guard to "no data" for every test.
 
@@ -1194,6 +1210,11 @@ def pytest_configure(config):
         "markers",
         "real_safe_directory: run the real `git config --get-all safe.directory` pre-read in "
         "noninteractive_git_env() (autouse fixture otherwise stubs it to no entries).",
+    )
+    config.addinivalue_line(
+        "markers",
+        "shipped_nous_guest: keep Office Agent's shipped nous.guest default (off) instead of "
+        "the upstream default the autouse fixture restores.",
     )
     config.addinivalue_line(
         "markers",
