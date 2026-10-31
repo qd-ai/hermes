@@ -2814,6 +2814,10 @@ def get_env_prefer_dotenv(key: str) -> str:
     value from the active secret scope (set by apply_onepassword_secrets());
     otherwise every provider auth attempt would receive a URL instead of a key.
     """
+    from agent.secret_scope import is_install_wide_secret
+
+    if is_install_wide_secret(key):  # central only: never a profile's own copy
+        return (_get_secret(key, "") or "").strip()
     env_file = load_env()
     raw = env_file.get(key, "").strip()
     scoped_value = (_get_secret(key, "") or "").strip()

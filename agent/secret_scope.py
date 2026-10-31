@@ -227,6 +227,34 @@ def _environ_or(name: str, default: Optional[str]) -> Optional[str]:
     return val if val is not None else default
 
 
+# Install-wide secrets (Office Agent): one value for every profile, kept ONLY in the root home's
+# ``.env`` (the default profile's). The Office Agent account token is the one: every agent bills
+# to the same account, and per-profile copies drifted the moment the user rotated it in one agent.
+# Central only, by product decision: a copy in a profile's ``.env`` (a ``profile create --clone``)
+# is ignored, so agents cannot diverge. Read from the file at lookup time, never ``os.environ``:
+# a process loads its own home's ``.env`` at startup, so a long-lived one would keep a rotated
+# value. Maps each name it answers to the variable stored: the provider blocks' former
+# ``key_env`` reads the same token until the app rewrites them.
+_INSTALL_WIDE_SECRETS = {
+    "OA_TOKEN": "OA_TOKEN",
+    "HERMES_CUSTOM_OFFICE_AGENT_API_KEY": "OA_TOKEN",
+}
+
+
+def is_install_wide_secret(name: str) -> bool:
+    """True for a secret only ``get_secret`` may answer: readers that prefer a profile's own ``.env``
+    (``get_env_prefer_dotenv``, ``get_env_value_prefer_dotenv``, ``get_env_value``) must not, or a
+    stale per-profile copy wins over the central value."""
+    return name in _INSTALL_WIDE_SECRETS
+
+
+def _install_wide_secret(name: str, default: Optional[str]) -> Optional[str]:
+    from hermes_constants import get_default_hermes_root
+
+    value = load_env_file(get_default_hermes_root() / ".env").get(_INSTALL_WIDE_SECRETS[name])
+    return value if value else default
+
+
 def get_secret(name: str, default: Optional[str] = None) -> Optional[str]:
     """Resolve a credential by env-var name, honoring the active profile scope.
 
@@ -236,7 +264,10 @@ def get_secret(name: str, default: Optional[str] = None) -> Optional[str]:
     inject credentials via the process env (systemd, ``op run``), so the scope
     must stay a ``.env`` overlay, not a blindfold (otherwise cron 401s). With no
     scope: multiplex INACTIVE reads ``os.environ``; ACTIVE raises (fail closed).
+    Install-wide secrets read the root ``.env`` in every mode.
     """
+    if name in _INSTALL_WIDE_SECRETS:
+        return _install_wide_secret(name, default)
     if _is_global_env(name):
         return _environ_or(name, default)
     bound = _SECRET_SCOPE.get()

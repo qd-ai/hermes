@@ -2918,7 +2918,11 @@ def get_env_value(key: str) -> Optional[str]:
     ``gateway.config._getenv`` already work this way — this was the last scope-blind reader of the trio
     (#67027).
     """
+    from agent.secret_scope import is_install_wide_secret
+
     val = _scoped_environ_get(key)
+    if val is None and is_install_wide_secret(key):  # central only: never a profile's own copy
+        return None
     return load_env().get(key) if val is None else val
 
 
@@ -2930,6 +2934,10 @@ def get_env_value_prefer_dotenv(key: str) -> Optional[str]:
     active secret scope (set by the 1Password secret source) — otherwise a provider auth attempt
     would receive a URL instead of a key. Same carve-out as
     ``agent.credential_pool.get_env_prefer_dotenv``."""
+    from agent.secret_scope import is_install_wide_secret
+
+    if is_install_wide_secret(key):  # central only: never a profile's own copy
+        return _scoped_environ_get(key)
     raw = load_env().get(key) or ""
     if str(raw).lstrip().startswith("op://"):
         scoped = _scoped_environ_get(key)
