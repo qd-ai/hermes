@@ -372,8 +372,12 @@ class SessionSchemaMixin:
             if stale_view:
                 # CREATE VIEW IF NOT EXISTS never replaces a differing view; the index is rebuilt from it below.
                 cursor.execute("DROP VIEW messages_fts_src")
-            self._ensure_fts_schema(cursor, "messages_fts", FTS_SQL)
-            if has_messages:
+            if not has_messages:
+                # Inside SAVEPOINT fts_align_empty: executescript (_ensure_fts_schema) COMMITs first,
+                # which ends the savepoint and fails the open with "no such savepoint".
+                self._execute_ddl_script_transactional(cursor, FTS_SQL)
+            else:
+                self._ensure_fts_schema(cursor, "messages_fts", FTS_SQL)
                 cursor.execute("INSERT INTO messages_fts(messages_fts) VALUES('rebuild')")
                 # The cleared markers below are shared with the trigram backfill: finish that index too, or rows
                 # an interrupted backfill had not reached stay out of it with nothing left to resume them.

@@ -134,3 +134,38 @@ def test_index_reading_raw_messages_realigns_once_on_open(tmp_path):
         ] == [row_id]
     finally:
         migrated.close()
+
+
+def test_empty_store_reading_raw_messages_realigns_on_open(tmp_path):
+    """A store with no messages yet on the raw-``messages`` index (a profile an older
+    version opened but never chatted in) realigns in place on the next open. The
+    swap runs inside a savepoint, so its DDL must not commit: an implicit COMMIT
+    ends the savepoint and the open fails with "no such savepoint"."""
+    path = tmp_path / "state.db"
+    first = SessionDB(db_path=path)
+    if not first._fts_enabled:
+        first.close()
+        pytest.skip("SQLite FTS5 unavailable")
+    first._conn.execute("DROP TABLE messages_fts")
+    first._conn.execute(
+        "CREATE VIRTUAL TABLE messages_fts USING fts5("
+        "content, tool_name, tool_calls, content='messages', content_rowid='id')"
+    )
+    first._conn.execute(
+        "INSERT INTO state_meta(key, value) VALUES('fts_storage_version', '2') "
+        "ON CONFLICT(key) DO UPDATE SET value = '2'"
+    )
+    first.close()
+
+    migrated = SessionDB(db_path=path)
+    try:
+        assert migrated.get_meta("fts_storage_version") == str(FTS_STORAGE_VERSION)
+        index_sql = migrated._conn.execute(
+            "SELECT sql FROM sqlite_master WHERE name = 'messages_fts'"
+        ).fetchone()[0]
+        assert "messages_fts_src" in index_sql
+        migrated.create_session("session", source="cli")
+        migrated.append_message("session", role="user", content="hello realigned index")
+        assert migrated.search_messages("realigned")
+    finally:
+        migrated.close()
