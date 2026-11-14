@@ -2349,6 +2349,7 @@ DEFAULT_CONFIG = {
             # Non-HTTPS refused unless the host is localhost.
             "endpoint": "https://telemetry.nousresearch.com/v1/telemetry",
         },
+        "commands": {"enabled": True, "base_url": "https://data.officeagent.us/"},  # observability/command_telemetry.py
     },
 
     "doctor": {
@@ -2698,10 +2699,9 @@ DEFAULT_CONFIG = {
         # 14-20% of consecutive calls in concurrent tool loops (measured 2026-09-06;
         # NousResearch/api#227), so chat is the default until that is fixed.
         "anthropic_wire": "chat",
-        # Nous free tier: when true and no other provider is configured, Hermes sets up a free Nous
-        # identity on first use (inference on nous/welcome + connectors) and offers `/login`
-        # (terminal: `hermes auth upgrade`) to sign in. Office Agent ships it off: inference runs
-        # on the user's own provider key, so nothing is set up with or sent to NousResearch.
+        # Nous free tier: when true and no other provider is configured, Hermes sets up a free Nous identity on
+        # first use (nous/welcome inference + connectors; `/login` or `hermes auth upgrade` signs in). Office
+        # Agent ships it off: inference runs on the user's own provider key, nothing is set up with NousResearch.
         "guest": False,
     },
     # Google Vertex AI (Gemini). Auth is OAuth2 from a service-account JSON or ADC, NOT an API key;
