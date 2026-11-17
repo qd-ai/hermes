@@ -17,10 +17,13 @@ def ensure_exit_code(result) -> int:
 def cmd_gateway_ensure(args) -> None:
     from hermes_constants import get_hermes_home
     from hermes_cli.gateway_runtime import ensure_gateway_runtime
+    from hermes_cli.office_agent_token_mirror import mirror_office_agent_token
 
     try:
         # Legacy imported utilities can print; protocol stdout belongs only to us.
         with redirect_stdout(sys.stderr):
+            # Desktop runs this on every launch, attached or not: the one per-launch backend step.
+            mirror_office_agent_token()
             result = ensure_gateway_runtime(get_hermes_home(), timeout=float(args.timeout))
         payload = asdict(result)
         if result.endpoint:

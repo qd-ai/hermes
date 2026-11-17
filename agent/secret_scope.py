@@ -230,8 +230,9 @@ def _environ_or(name: str, default: Optional[str]) -> Optional[str]:
 # Install-wide secrets (Office Agent): one value for every profile, kept ONLY in the root home's
 # ``.env`` (the default profile's). The Office Agent account token is the one: every agent bills
 # to the same account, and per-profile copies drifted the moment the user rotated it in one agent.
-# Central only, by product decision: a copy in a profile's ``.env`` (a ``profile create --clone``)
-# is ignored, so agents cannot diverge. Read from the file at lookup time, never ``os.environ``:
+# Central only, by product decision: a copy in a profile's ``.env`` (the mirror ``hermes gateway
+# ensure`` writes, see ``hermes_cli.office_agent_token_mirror``, or a ``profile create --clone``) is
+# never read, so agents cannot diverge. Read from the file at lookup time, never ``os.environ``:
 # a process loads its own home's ``.env`` at startup, so a long-lived one would keep a rotated
 # value. Maps each name it answers to the variable stored: the provider blocks' former
 # ``key_env`` reads the same token until the app rewrites them.
