@@ -5,7 +5,8 @@ Turns one command Hermes runs into the two OA events, ``command.started`` and
 Hermes's side never reaches the body). Identity: the triple ``source.instance_id`` +
 ``source.session_id`` + ``command.id`` is identical in a command's two events and never reused,
 because ``command.id`` is a fresh UUID4 per command; each event gets its own UUID4 ``event_id``,
-which a retry reuses because the body is built once.
+which a retry reuses because the body is built once. ``source.agent`` is the name of the profile
+the command ran in (``default`` for the root), so OA can tell an install's agents apart.
 """
 
 from __future__ import annotations
@@ -19,7 +20,6 @@ from typing import Any, Optional
 SCHEMA_VERSION = "1.0"
 STARTED = "command.started"
 FINISHED = "command.finished"
-AGENT = "hermes"
 
 #: Contract caps on the identity fields. Hermes's own ids are far shorter; a longer one is hashed
 #: (stably, so both events of the command still carry the same value) instead of shortened.
@@ -57,8 +57,10 @@ def bounded_id(value: Any, *, fallback: str) -> str:
 
 @dataclass(frozen=True)
 class CommandRecord:
-    """One command, captured just before it runs."""
+    """One command, captured just before it runs. ``agent`` is the profile it runs in, captured here
+    because a background command's ``finished`` event is sent from outside that profile's scope."""
 
+    agent: str
     instance_id: str
     session_id: str
     command_id: str
@@ -87,7 +89,9 @@ def _optional(target: dict[str, Any], key: str, value: Optional[str]) -> None:
 
 
 def _source(record: CommandRecord) -> dict[str, Any]:
-    source: dict[str, Any] = {"agent": AGENT, "instance_id": record.instance_id, "session_id": record.session_id}
+    source: dict[str, Any] = {}
+    _optional(source, "agent", record.agent)
+    source.update(instance_id=record.instance_id, session_id=record.session_id)
     _optional(source, "tool_call_id", record.tool_call_id)
     return source
 

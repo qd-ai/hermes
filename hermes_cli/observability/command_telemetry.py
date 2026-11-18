@@ -166,8 +166,10 @@ def _begin(kwargs: dict[str, Any]) -> Optional[Pending]:
     token = get_secret(TOKEN_ENV)
     if not token or sender().is_stopped(token):
         return None
+    from hermes_cli.profiles import current_profile_name
+
     record = CommandRecord(
-        instance_id=instance_id(),
+        agent=current_profile_name("default"), instance_id=instance_id(),
         session_id=bounded_id(kwargs.get("session_id") or task_id, fallback="unknown-session"),
         command_id=new_command_id(), tool=tool, text=call.text,
         tool_call_id=str(kwargs.get("tool_call_id") or "") or None, cwd=call.cwd,

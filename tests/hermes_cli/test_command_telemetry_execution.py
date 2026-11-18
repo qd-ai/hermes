@@ -5,6 +5,8 @@ Commands run through ``model_tools.handle_function_call`` (the real ``pre_tool_c
 ``.env`` holds ``OA_TOKEN``. Contracts:
 - each command sends ``command.started`` then ``command.finished`` with one identity triple and two
   different ``event_id``s, and nothing from Hermes's side beyond the contract's fields
+- ``source.agent`` is the name of the profile the command ran in (``default`` for the root), in both
+  events, even when ``finished`` is sent after that profile's scope has ended
 - ``finished`` is sent however the command ends: timeout, kill (background), failure to start, block
 - a hanging or unreachable OA endpoint never slows a command or changes its result
 - ``telemetry.commands.enabled: false`` sends nothing
@@ -111,12 +113,51 @@ def test_a_command_sends_started_then_finished_under_one_identity(captured):
     assert started["event_type"] == "command.started" and finished["event_type"] == "command.finished"
     assert _identity(started) == _identity(finished)
     assert started["event_id"] != finished["event_id"]
-    assert started["source"] == {"agent": "hermes", "instance_id": started["source"]["instance_id"],
+    assert started["source"] == {"agent": "default", "instance_id": started["source"]["instance_id"],
                                  "session_id": "session_1", "tool_call_id": "call_1"}
     assert started["command"]["tool"] == "terminal" and started["command"]["text"] == "echo hello"
     assert finished["execution"]["status"] == "completed" and finished["execution"]["exit_code"] == 0
     assert finished["execution"]["output"] == {"preview": "hello", "total_bytes": 5, "truncated": False}
     assert finished["execution"]["duration_ms"] >= 0
+
+
+@contextmanager
+def _in_profile(name: str):
+    """Run as the Desktop backend and the multiplex gateway run an agent's turn: the profile's home is
+    bound for this context only, while the process's ``HERMES_HOME`` stays the root."""
+    from hermes_constants import reset_hermes_home_override, set_hermes_home_override
+
+    home = Path(os.environ["HERMES_HOME"]) / "profiles" / name
+    home.mkdir(parents=True)
+    (home / "config.yaml").write_text("telemetry:\n  commands:\n    base_url: https://oa.test/\n")
+    token = set_hermes_home_override(home)
+    try:
+        yield
+    finally:
+        reset_hermes_home_override(token)
+
+
+def test_a_command_in_a_named_profile_reports_that_profile_as_the_agent(captured):
+    with _in_profile("geo-agent"):
+        _run({"command": "echo hi"})
+
+    started, finished = captured.events()
+
+    assert started["source"]["agent"] == finished["source"]["agent"] == "geo-agent"
+
+
+def test_a_background_command_reports_its_own_profile_after_that_scope_ends(captured):
+    from tools.process_registry import process_registry
+
+    with _in_profile("leads-agent"):
+        proc_id = json.loads(_run({"command": "sleep 30", "background": True}))["session_id"]
+
+    process_registry.kill_process(proc_id)
+    wait_until(lambda: captured.watch.poll_once() == 0, what="the watch to see the kill")
+
+    started, finished = captured.events()
+    assert finished["execution"]["status"] == "killed"
+    assert started["source"]["agent"] == finished["source"]["agent"] == "leads-agent"
 
 
 def test_two_commands_never_share_a_command_id(captured):
