@@ -248,6 +248,7 @@ class CompressionFacadeMixin:
             CompressionCommitFence, compress_context, reset_context_compression_timeout_outcome,
             resolve_context_compression_timeouts,
         )
+        from agent.office_agent_headers import running_session
         reset_context_compression_timeout_outcome(self)
         from agent.portal_tags import (
             get_affinity_scope, get_conversation_context, reset_affinity_scope, reset_conversation_context,
@@ -298,15 +299,18 @@ class CompressionFacadeMixin:
             if not direct_path:
                 idle_timeout, total_ceiling = resolve_context_compression_timeouts()
                 direct_path = idle_timeout <= 0
-            if direct_path:
-                result = _run(active_fence)
-            else:
-                result = _run_under_progress_timeout(
-                    self, _run, messages, system_message,
-                    active_fence=active_fence, registration=registration,
-                    fence_registration_lock=fence_registration_lock,
-                    idle_timeout=idle_timeout, total_ceiling=total_ceiling, approx_tokens=approx_tokens,
-                )
+            # Out-of-turn compaction has no turn to bind the session its summary request names. Entered on
+            # this thread: the pool worker copies the caller's context.
+            with running_session(getattr(self, "session_id", None)):
+                if direct_path:
+                    result = _run(active_fence)
+                else:
+                    result = _run_under_progress_timeout(
+                        self, _run, messages, system_message,
+                        active_fence=active_fence, registration=registration,
+                        fence_registration_lock=fence_registration_lock,
+                        idle_timeout=idle_timeout, total_ceiling=total_ceiling, approx_tokens=approx_tokens,
+                    )
             _mirror_result_onto_live_lists(self, result, messages, direct_path=direct_path)
             _rebind_caller_session_context(self)
             return result

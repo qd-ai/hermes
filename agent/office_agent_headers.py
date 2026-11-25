@@ -9,6 +9,9 @@ read from the same helpers. They ride in HTTP headers beside the bearer token; t
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from typing import Optional
 
 from utils import base_url_host_matches
@@ -19,6 +22,21 @@ OFFICE_AGENT_HOST = "model.officeagent.us"
 AGENT_HEADER = "X-OA-Agent"
 SESSION_HEADER = "X-OA-Session-Id"
 INSTANCE_HEADER = "X-OA-Instance-Id"
+
+# The session whose turn or compaction is running. The compactors make their side calls with a runtime of their own
+# that holds no session id, so those requests know their exact session only from here. A ContextVar: concurrent
+# sessions never see each other's, and the compaction worker thread inherits the caller's.
+_running_session: ContextVar[Optional[str]] = ContextVar("office_agent_running_session", default=None)
+
+
+@contextmanager
+def running_session(session_id: Optional[str]) -> Iterator[None]:
+    """Name ``session_id`` on requests sent inside the block that do not bring a session id themselves."""
+    token = _running_session.set(session_id or None)
+    try:
+        yield
+    finally:
+        _running_session.reset(token)
 
 
 def _sendable(value: str) -> bool:
@@ -34,7 +52,7 @@ def _identity(session_id: Optional[str]) -> dict[str, str]:
     agent = current_profile_name("default") or ""
     values = {
         AGENT_HEADER: agent if len(agent) <= OPTIONAL_MAX_CHARS else "",
-        SESSION_HEADER: bounded_id(session_id, fallback=""),
+        SESSION_HEADER: bounded_id(session_id or _running_session.get(), fallback=""),
         INSTANCE_HEADER: instance_id(),
     }
     return {header: value for header, value in values.items() if _sendable(value)}

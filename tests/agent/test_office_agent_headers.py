@@ -175,3 +175,81 @@ def test_nothing_else_about_the_request_changes(monkeypatch):
     assert without.pop("extra_headers") == {"X-Mine": "1"}
     assert with_headers == without
     assert sent["X-Mine"] == "1" and "Authorization" not in sent
+
+
+LONG_CHAT = [m for i in range(30) for m in ({"role": "user", "content": f"q{i} " + "x" * 4000},
+                                            {"role": "assistant", "content": f"a{i} " + "y" * 4000})]
+
+
+@pytest.fixture
+def sent(monkeypatch):
+    """The X-OA headers of every side request, served by a fake client on the Office Agent route."""
+    requests = []
+
+    def create(**kwargs):
+        requests.append(_oa(kwargs))
+        message = SimpleNamespace(content="Summary: ok " * 30)
+        return SimpleNamespace(choices=[SimpleNamespace(message=message, finish_reason="stop")], model="v4-flash", usage=None)
+
+    client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)), base_url=BASE)
+    monkeypatch.setattr(aux, "_resolve_task_provider_model", lambda *_a, **_k: ("custom", "v4-flash", BASE, "test-key", None))
+    monkeypatch.setattr(aux, "_get_cached_client", lambda *_a, **_k: (client, "v4-flash"))
+    return requests
+
+
+def _side_call_with_its_own_runtime():
+    """What the compactors do: a side call that passes a runtime holding no session id."""
+    aux.call_llm(task="compression", messages=MSGS,
+                 main_runtime={"provider": "custom", "model": "v4-flash", "base_url": BASE, "api_key": "test-key"})
+
+
+def _turn(monkeypatch, bodies):
+    """Run real turns whose model loop is replaced by ``bodies[agent.session_id]``."""
+    import agent.conversation_loop as loop
+
+    def fake_loop(agent, *_a, **_k):
+        bodies[agent.session_id](agent)
+        return {"final_response": "ok", "messages": []}
+
+    monkeypatch.setattr(loop, "run_conversation", fake_loop)
+
+
+def test_compaction_outside_a_turn_names_the_session_it_compacts(sent):
+    _agent("sess-A")._compress_context(list(LONG_CHAT), "sys", approx_tokens=900_000, force=True)
+
+    assert sent and {h.get(SESSION) for h in sent} == {"sess-A"}
+
+
+def test_side_calls_inside_a_turn_name_the_running_session(monkeypatch, sent):
+    def body(agent):
+        agent._compress_context(list(LONG_CHAT), "sys", approx_tokens=900_000, force=True)
+        _side_call_with_its_own_runtime()
+
+    _turn(monkeypatch, {"sess-A": body})
+    _agent("sess-A").run_conversation("hello")
+
+    assert len(sent) >= 2 and {h.get(SESSION) for h in sent} == {"sess-A"}
+
+
+def test_a_subagent_names_itself_and_the_parent_is_itself_again_after(monkeypatch, sent):
+    def parent(_agent_):
+        _side_call_with_its_own_runtime()
+        _agent("sess-child").run_conversation("child work")
+        _side_call_with_its_own_runtime()
+
+    _turn(monkeypatch, {"sess-A": parent, "sess-child": lambda _a: _side_call_with_its_own_runtime()})
+    _agent("sess-A").run_conversation("hello")
+
+    assert [h.get(SESSION) for h in sent] == ["sess-A", "sess-child", "sess-A"]
+
+
+def test_a_turn_that_raises_leaves_no_session_behind(monkeypatch, sent):
+    def body(_agent_):
+        raise RuntimeError("turn failed")
+
+    _turn(monkeypatch, {"sess-A": body})
+    with pytest.raises(RuntimeError, match="turn failed"):
+        _agent("sess-A").run_conversation("hello")
+    _side_call_with_its_own_runtime()
+
+    assert SESSION not in sent[-1]

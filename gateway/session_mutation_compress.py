@@ -33,6 +33,7 @@ async def prepare_compress(authority, live, payload, prepared):
     from agent.context_compressor import ContextCompressor
     from agent.agent_init import _parse_config_int
     from agent.model_metadata import estimate_request_tokens_rough
+    from agent.office_agent_headers import running_session
     from hermes_cli.partial_compress import (
         rejoin_compressed_head_and_tail, split_history_for_partial_compress, summarize_compress_preview)
     from utils import is_truthy_value
@@ -66,7 +67,7 @@ async def prepare_compress(authority, live, payload, prepared):
     resident = cached_agent(live.route) if callable(cached_agent) else None
 
     def summarize():
-        with policy_scope(policy, authority=authority):
+        with policy_scope(policy, authority=authority), running_session(snapshot['target']):
             from agent.conversation_compression import _pre_compress_memory_context
             memory_context = _pre_compress_memory_context(resident, head, False) if resident is not None else ''
             compressor = ContextCompressor(model, base_url=runtime.get('base_url') or '',
