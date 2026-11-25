@@ -248,7 +248,7 @@ class CompressionFacadeMixin:
             CompressionCommitFence, compress_context, reset_context_compression_timeout_outcome,
             resolve_context_compression_timeouts,
         )
-        from agent.office_agent_headers import running_session
+        from agent.office_agent_headers import running_session, session_rotated
         reset_context_compression_timeout_outcome(self)
         from agent.portal_tags import (
             get_affinity_scope, get_conversation_context, reset_affinity_scope, reset_conversation_context,
@@ -301,7 +301,8 @@ class CompressionFacadeMixin:
                 direct_path = idle_timeout <= 0
             # Out-of-turn compaction has no turn to bind the session its summary request names. Entered on
             # this thread: the pool worker copies the caller's context.
-            with running_session(getattr(self, "session_id", None)):
+            session_before = getattr(self, "session_id", None)
+            with running_session(session_before):
                 if direct_path:
                     result = _run(active_fence)
                 else:
@@ -313,6 +314,7 @@ class CompressionFacadeMixin:
                     )
             _mirror_result_onto_live_lists(self, result, messages, direct_path=direct_path)
             _rebind_caller_session_context(self)
+            session_rotated(session_before, getattr(self, "session_id", None))
             return result
         finally:
             # Remove only THIS attempt's registration. Completion order is not registration

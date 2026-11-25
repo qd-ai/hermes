@@ -1459,8 +1459,10 @@ class GatewayInboundMixin(GatewayInboundHooksMixin, GatewayInboundTranscriptionM
             logger.debug("vision enrichment: session runtime resolution failed", exc_info=True)
 
         from agent.auxiliary_client import scoped_runtime_main
+        from agent.office_agent_headers import running_session
 
-        with scoped_runtime_main(vision_runtime):
+        store = getattr(self, "session_store", None)
+        with scoped_runtime_main(vision_runtime), running_session(store.peek_session_id(session_key) if store else None):
             return await self._enrich_message_with_vision(message_text, image_paths)
 
     async def _echo_stt_transcripts(

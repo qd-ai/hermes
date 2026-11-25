@@ -638,6 +638,7 @@ class CLIStreamMixin:
         local path is included so the agent can re-examine via ``vision_analyze``."""
         from cli import _DIM, _RST, _cprint
         import asyncio as _asyncio
+        from agent.office_agent_headers import running_session
         from gateway.warning_notifications import render_notification
         from tools.vision_tools import vision_analyze_tool
         analysis_prompt = (
@@ -652,8 +653,9 @@ class CLIStreamMixin:
             if announce:
                 _cprint(f"  {_DIM}{t('cli.stream.vision_analyzing', name=img_path.name, size_kb=size_kb)}{_RST}")
             try:
-                result_json = _asyncio.run(
-                    vision_analyze_tool(image_url=str(img_path), user_prompt=analysis_prompt))
+                with running_session(getattr(self, "session_id", None)):  # no turn has bound it yet
+                    result_json = _asyncio.run(
+                        vision_analyze_tool(image_url=str(img_path), user_prompt=analysis_prompt))
                 result = json.loads(result_json)
                 if result.get("success"):
                     description = result.get("analysis", "")

@@ -567,9 +567,11 @@ class LoopManager:
         # 2. Evidence-based --until judge (reuses the /goal judge; fail-open).
         if s.until and (last_response or "").strip():
             try:
+                from agent.office_agent_headers import running_session
                 from hermes_cli.goals import judge_goal
 
-                verdict, reason, _pf, _wait, _tf = judge_goal(s.until, last_response)
+                with running_session(self.session_id):  # the turn that bound it is over
+                    verdict, reason, _pf, _wait, _tf = judge_goal(s.until, last_response)
             except Exception as exc:
                 verdict, reason = "continue", f"judge unavailable: {type(exc).__name__}"
             if verdict == "done":

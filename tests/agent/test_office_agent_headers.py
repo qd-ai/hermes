@@ -253,3 +253,46 @@ def test_a_turn_that_raises_leaves_no_session_behind(monkeypatch, sent):
     _side_call_with_its_own_runtime()
 
     assert SESSION not in sent[-1]
+
+
+def _rotating_agent(tmp_path):
+    from hermes_state import SessionDB
+
+    agent = AIAgent(api_key="test-key", base_url=BASE, model="v4-flash", provider="custom", quiet_mode=True,
+                    skip_context_files=True, skip_memory=True, session_id="sess-A",
+                    session_db=SessionDB(tmp_path / "state.db"))
+    agent.compression_in_place = False
+    agent._ensure_db_session()
+    return agent
+
+
+def test_after_a_rotation_every_request_of_the_turn_names_the_new_session(monkeypatch, sent, tmp_path):
+    from agent.turn_context import _publish_runtime_main
+
+    main = []
+
+    def body(agent):
+        _publish_runtime_main(agent)  # as a real turn does: side calls read the session id from here
+        agent._compress_context(list(LONG_CHAT), "sys", approx_tokens=900_000, force=True)
+        sent.clear()
+        aux.call_llm(task="approval", messages=MSGS)
+        _side_call_with_its_own_runtime()
+        main.append(_main(agent)[SESSION])
+
+    agent = _rotating_agent(tmp_path)
+    _turn(monkeypatch, {"sess-A": body})
+    agent.run_conversation("hello")
+
+    assert agent.session_id != "sess-A"
+    assert main == [agent.session_id]
+    assert [h.get(SESSION) for h in sent] == [agent.session_id, agent.session_id]
+
+
+def test_a_rotation_outside_a_turn_leaves_no_session_behind(sent, tmp_path):
+    agent = _rotating_agent(tmp_path)
+    agent._compress_context(list(LONG_CHAT), "sys", approx_tokens=900_000, force=True)
+    assert agent.session_id != "sess-A"
+
+    _side_call_with_its_own_runtime()
+
+    assert SESSION not in sent[-1]

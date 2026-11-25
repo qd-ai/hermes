@@ -23,20 +23,37 @@ AGENT_HEADER = "X-OA-Agent"
 SESSION_HEADER = "X-OA-Session-Id"
 INSTANCE_HEADER = "X-OA-Instance-Id"
 
-# The session whose turn or compaction is running. The compactors make their side calls with a runtime of their own
-# that holds no session id, so those requests know their exact session only from here. A ContextVar: concurrent
-# sessions never see each other's, and the compaction worker thread inherits the caller's.
-_running_session: ContextVar[Optional[str]] = ContextVar("office_agent_running_session", default=None)
+# The session whose turn or compaction is running, then the sessions that turn rotated away from. The compactors make
+# their side calls with a runtime of their own that holds no session id, so those requests know their exact session
+# only from here. A ContextVar: concurrent sessions never see each other's, and the compaction worker thread inherits
+# the caller's.
+_running_session: ContextVar[tuple[str, ...]] = ContextVar("office_agent_running_session", default=())
 
 
 @contextmanager
 def running_session(session_id: Optional[str]) -> Iterator[None]:
     """Name ``session_id`` on requests sent inside the block that do not bring a session id themselves."""
-    token = _running_session.set(session_id or None)
+    token = _running_session.set((session_id,) if session_id else ())
     try:
         yield
     finally:
         _running_session.reset(token)
+
+
+def session_rotated(old: Optional[str], new: Optional[str]) -> None:
+    """A rotating compaction (``compression.in_place: false``) moved the running turn from ``old`` to ``new``.
+
+    The side calls of that turn keep reading ``old`` from the runtime bound when it started, so both ids name ``new``
+    until the turn ends. Outside ``old``'s turn this does nothing.
+    """
+    running = _running_session.get()
+    if running and running[0] == old and new and new != old:
+        _running_session.set((new, *running))
+
+
+def _exact_session(session_id: Optional[str]) -> Optional[str]:
+    running = _running_session.get()
+    return running[0] if running and (not session_id or session_id in running) else session_id
 
 
 def _sendable(value: str) -> bool:
@@ -52,7 +69,7 @@ def _identity(session_id: Optional[str]) -> dict[str, str]:
     agent = current_profile_name("default") or ""
     values = {
         AGENT_HEADER: agent if len(agent) <= OPTIONAL_MAX_CHARS else "",
-        SESSION_HEADER: bounded_id(session_id or _running_session.get(), fallback=""),
+        SESSION_HEADER: bounded_id(_exact_session(session_id), fallback=""),
         INSTANCE_HEADER: instance_id(),
     }
     return {header: value for header, value in values.items() if _sendable(value)}

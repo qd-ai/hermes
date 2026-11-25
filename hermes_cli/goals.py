@@ -1508,10 +1508,12 @@ class GoalManager:
                 return self._budget_pause(state, "gate_failed", gate_decision.get("reason", ""), note=" (a quality gate is still failing)")
             return gate_decision
 
-        verdict, reason, parse_failed, wait_directive, transport_failed = judge_goal(
-            state.goal, last_response, subgoals=state.subgoals or None, background_processes=background_processes,
-            contract=state.contract if state.has_contract() else None, active_delegations=active_delegations,
-        )
+        from agent.office_agent_headers import running_session
+        with running_session(self.session_id):  # the turn that bound it is over
+            verdict, reason, parse_failed, wait_directive, transport_failed = judge_goal(
+                state.goal, last_response, subgoals=state.subgoals or None, background_processes=background_processes,
+                contract=state.contract if state.has_contract() else None, active_delegations=active_delegations,
+            )
         state.last_verdict = verdict
         state.last_reason = reason
         # Parse failures reset on any usable reply INCLUDING transport errors, so a flaky network
