@@ -1,6 +1,6 @@
 """Conversation-affinity request headers for session-aware relays and proxies.
 
-Two sources, one merge point:
+Three sources, one merge point:
 
 * ``x-opencode-session`` — OpenCode (opencode.ai Zen/Go relay) pins requests that share this
   value to the same upstream backend, which keeps its prompt cache warm across the turns of one
@@ -9,8 +9,10 @@ Two sources, one merge point:
   (default off). Session-aware proxies fronting a stateful backend (LiteLLM's ``x-litellm-session-id``,
   self-hosted Claude/OpenAI gateways) otherwise classify an agent-loop request whose last message is
   a ``tool_result`` as a new conversation and replay the whole history upstream (#86241, #104449).
+* ``X-OA-*`` — who is calling, on requests to Office Agent only (``agent.office_agent_headers``). Identity, not
+  affinity: it carries the exact session id, not the conversation key below.
 
-The value only has to be opaque and consistent per conversation, so it is derived the same way as
+The affinity value only has to be opaque and consistent per conversation, so it is derived the same way as
 the other affinity hints Hermes already sends (OpenRouter's sticky ``session_id``, xAI's
 ``x-grok-conv-id``): the host-declared routing scope first (a host that names its own conversation,
 #96811), then the ambient conversation ROOT (stable across compaction rotation and delegate trees),
@@ -26,6 +28,8 @@ from __future__ import annotations
 
 import uuid
 from typing import Any, Optional
+
+from agent.office_agent_headers import office_agent_headers
 
 OPENCODE_SESSION_HEADER = "x-opencode-session"
 
@@ -134,13 +138,14 @@ def merge_session_affinity_headers(
     base_url: Optional[str],
     session_id: Optional[str] = None,
 ) -> dict[str, Any]:
-    """Merge the affinity header(s) into ``kwargs["extra_headers"]`` (in place).
+    """Merge the affinity and Office Agent header(s) into ``kwargs["extra_headers"]`` (in place).
 
     Existing per-request headers win, so a caller-pinned value is preserved.
-    Targets with neither source configured are left untouched.
+    Targets with no source configured are left untouched.
     """
     headers = opencode_session_headers(provider, base_url, session_id)
     headers.update(custom_provider_session_affinity_headers(base_url, session_id))
+    headers.update(office_agent_headers(base_url, session_id))
     if headers:
         existing = kwargs.get("extra_headers")
         merged = dict(existing) if isinstance(existing, dict) else {}
